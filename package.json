@@ -1,0 +1,26 @@
+{
+  "name": "yunxicartoon",
+  "version": "1.0.0",
+  "description": "本地可运行的 AI 绘本生成工具，默认接入阿里云百炼 / 千问，支持故事生成、插图生成、PDF 导出和项目管理。",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "restart": "bash scripts/restart.sh"
+  },
+  "keywords": [
+    "picture-book",
+    "qwen",
+    "dashscope",
+    "storybook"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "jsdom": "^29.1.1",
+    "openai": "^6.0.1",
+    "pdf-lib": "^1.17.1"
+  }
+}

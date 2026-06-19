@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>云溪绘本工具 Pro</title>
+    <link rel="stylesheet" href="styles.css?v=20260619c" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar card">
+        <div class="brand-block">
+          <p class="eyebrow">Picture Book Studio</p>
+          <h1>云溪绘本工具 Pro</h1>
+          <p class="muted">
+            一个本地可运行的儿童绘本工作台：支持多项目管理、AI 故事生成、AI 插图生成和 PDF 导出。
+          </p>
+        </div>
+
+        <section class="card panel soft-panel">
+          <div class="section-head compact-head">
+            <h2>项目管理</h2>
+            <span id="projectCount" class="muted">0 个项目</span>
+          </div>
+          <div class="button-row button-row-3">
+            <button id="newProjectBtn" class="secondary">新建</button>
+            <button id="duplicateProjectBtn" class="secondary">复制</button>
+            <button id="deleteProjectBtn" class="ghost">删除</button>
+          </div>
+          <div id="projectList" class="project-list"></div>
+        </section>
+
+        <section class="card panel">
+          <div class="section-head compact-head">
+            <h2>基础设定</h2>
+            <button id="randomBtn" class="ghost small-btn">随机示例</button>
+          </div>
+          <form id="bookForm" class="form-grid">
+            <label>
+              绘本标题
+              <input name="title" placeholder="例如：月亮邮差小米" />
+            </label>
+            <label>
+              主角
+              <input name="hero" placeholder="例如：会飞的小狐狸" />
+            </label>
+            <label>
+              故事目标
+              <input name="goal" placeholder="例如：送小星星回家" />
+            </label>
+            <label>
+              发生地点
+              <input name="setting" placeholder="例如：云朵小镇" />
+            </label>
+            <label>
+              阻碍 / 冲突
+              <input name="conflict" placeholder="例如：大风、黑夜、害怕" />
+            </label>
+            <label>
+              适龄
+              <select name="ageGroup">
+                <option value="3-5岁">3-5岁</option>
+                <option value="5-7岁">5-7岁</option>
+                <option value="7-9岁">7-9岁</option>
+              </select>
+            </label>
+            <label>
+              绘画风格
+              <select name="style">
+                <option value="温柔水彩风">温柔水彩风</option>
+                <option value="蜡笔手绘风">蜡笔手绘风</option>
+                <option value="治愈扁平插画">治愈扁平插画</option>
+                <option value="梦幻童话拼贴">梦幻童话拼贴</option>
+              </select>
+            </label>
+            <label>
+              页面数量
+              <input name="pageCount" type="number" min="6" max="16" />
+            </label>
+            <label>
+              画面主色
+              <input name="palette" placeholder="例如：奶油黄、天蓝、珊瑚粉" />
+            </label>
+          </form>
+        </section>
+
+        <section class="card panel status-panel">
+          <div class="section-head compact-head">
+            <h2>AI / 导出工具</h2>
+            <span id="apiBadge" class="status-badge status-offline">检测中</span>
+          </div>
+          <div class="character-ref-card">
+            <div class="section-head compact-head small-head">
+              <h3>人物参考图</h3>
+              <span id="characterReferenceName" class="muted tiny-text">未上传</span>
+            </div>
+            <div id="characterReferencePreview" class="character-ref-preview empty">暂无人物参考图</div>
+            <label class="file-field">
+              <span>上传人物图片（用于保持角色形象一致）</span>
+              <input id="characterReferenceInput" type="file" accept="image/*" />
+            </label>
+            <div class="button-row button-row-2">
+              <button id="clearCharacterReferenceBtn" class="ghost">清空参考图</button>
+              <button id="saveBtn" class="secondary">保存当前项目</button>
+            </div>
+          </div>
+          <div class="button-stack">
+            <button id="localGenerateBtn" class="primary">本地生成绘本结构</button>
+            <button id="aiGenerateBtn" class="secondary">AI 生成完整故事</button>
+            <button id="generateCoverBtn" class="secondary">AI 生成封面图</button>
+            <button id="batchImageBtn" class="secondary">批量生成逐页插图</button>
+          </div>
+          <div class="button-row button-row-3 export-row">
+            <button id="exportMdBtn" class="secondary">Markdown</button>
+            <button id="exportJsonBtn" class="secondary">JSON</button>
+            <button id="exportPdfBtn" class="primary">PDF</button>
+          </div>
+          <p id="apiHint" class="muted tiny-text">
+            若要启用 AI 功能，请在启动前设置 DASHSCOPE_API_KEY。
+          </p>
+        </section>
+      </aside>
+
+      <main class="main-panel">
+        <section class="hero-panel card">
+          <div class="hero-copy">
+            <p class="eyebrow">Project Preview</p>
+            <h2 id="previewTitle">未命名绘本</h2>
+            <p id="previewSummary" class="summary"></p>
+            <div class="tag-row">
+              <span id="themeTag" class="tag">主题：温暖成长</span>
+              <span id="lessonTag" class="tag">成长点：相信自己</span>
+            </div>
+          </div>
+          <div class="hero-side">
+            <div class="stats">
+              <div class="stat"><span>页数</span><strong id="statPages">10</strong></div>
+              <div class="stat"><span>风格</span><strong id="statStyle">温柔水彩风</strong></div>
+              <div class="stat"><span>适龄</span><strong id="statAge">5-7岁</strong></div>
+            </div>
+            <div class="cover-box">
+              <div class="cover-box-head">
+                <strong>封面预览</strong>
+                <span class="muted tiny-text">可单独 AI 生成</span>
+              </div>
+              <div id="coverPreview" class="cover-preview empty">暂无封面图</div>
+              <textarea id="coverPrompt" class="cover-prompt" rows="4" placeholder="封面图提示词"></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section class="outline-section card">
+          <div class="section-head">
+            <h3>故事大纲</h3>
+            <span class="muted">自动生成 4 段式故事弧线</span>
+          </div>
+          <div id="outline" class="outline-grid"></div>
+        </section>
+
+        <section class="pages-section card">
+          <div class="section-head">
+            <h3>逐页绘本</h3>
+            <span class="muted">支持编辑、单页生图与导出</span>
+          </div>
+          <div id="pages" class="pages-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="loadingMask" class="loading-mask hidden">
+      <div class="loading-card">
+        <div class="spinner"></div>
+        <strong id="loadingText">处理中...</strong>
+      </div>
+    </div>
+
+    <template id="projectItemTemplate">
+      <button class="project-item">
+        <div>
+          <strong class="project-name"></strong>
+          <p class="project-meta"></p>
+        </div>
+        <span class="project-arrow">→</span>
+      </button>
+    </template>
+
+    <template id="pageCardTemplate">
+      <article class="page-card">
+        <div class="page-header">
+          <span class="page-badge"></span>
+          <input class="page-title" />
+        </div>
+        <div class="page-image-wrap">
+          <div class="page-image empty">暂无插图</div>
+          <div class="page-actions">
+            <button class="page-generate-image secondary small-btn">生成插图</button>
+            <button class="page-clear-image ghost small-btn">清空</button>
+          </div>
+        </div>
+        <label>
+          页面文案
+          <textarea class="page-text" rows="4"></textarea>
+        </label>
+        <label>
+          画面描述 / AI 提示词
+          <textarea class="page-prompt" rows="4"></textarea>
+        </label>
+        <div class="page-meta-grid">
+          <label>
+            镜头
+            <input class="page-shot" />
+          </label>
+          <label>
+            情绪
+            <input class="page-emotion" />
+          </label>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js?v=20260619c"></script>
+  </body>
+</html>

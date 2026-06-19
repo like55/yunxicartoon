@@ -1,0 +1,11 @@
+node_modules
+output/pdf/*.pdf
+output/generated-images/*.png
+tmp/pdfs/*
+.DS_Store
+.env
+.env.local
+.idea/
+.vscode/
+.venv-qwen-image/
+local-models/
