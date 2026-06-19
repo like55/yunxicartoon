@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'yunxi-picture-book-projects-v2';
+const STORAGE_KEY = 'yunxi-picture-book-projects-v3';
 
 const form = document.getElementById('bookForm');
 const projectListEl = document.getElementById('projectList');
@@ -23,6 +23,12 @@ const apiHint = document.getElementById('apiHint');
 const characterReferenceInput = document.getElementById('characterReferenceInput');
 const characterReferencePreviewEl = document.getElementById('characterReferencePreview');
 const characterReferenceNameEl = document.getElementById('characterReferenceName');
+const characterAppearanceInput = document.getElementById('characterAppearance');
+const characterOutfitInput = document.getElementById('characterOutfit');
+const characterPersonalityInput = document.getElementById('characterPersonality');
+const characterConsistencyNotesInput = document.getElementById('characterConsistencyNotes');
+const lockCharacterConsistencyCheckbox = document.getElementById('lockCharacterConsistencyCheckbox');
+const skipGeneratedInBatchCheckbox = document.getElementById('skipGeneratedInBatchCheckbox');
 
 const buttons = {
   newProject: document.getElementById('newProjectBtn'),
@@ -83,7 +89,8 @@ const state = {
     ok: false,
     hasApiKey: false,
     textModel: '',
-    imageModel: ''
+    imageModel: '',
+    imageProvider: ''
   }
 };
 
@@ -106,6 +113,63 @@ function nowIso() {
 
 function clampPageCount(value) {
   return Math.max(6, Math.min(16, Number(value) || 10));
+}
+
+function defaultCharacterProfile() {
+  return {
+    appearance: '',
+    outfit: '',
+    personality: '',
+    consistencyNotes: '',
+    lockEnabled: true
+  };
+}
+
+function defaultGenerationOptions() {
+  return {
+    skipGeneratedInBatch: true
+  };
+}
+
+function getFormData() {
+  const data = Object.fromEntries(new FormData(form).entries());
+  data.pageCount = clampPageCount(data.pageCount);
+  return data;
+}
+
+function setFormData(data) {
+  for (const [key, value] of Object.entries(data || {})) {
+    const field = form.elements.namedItem(key);
+    if (field) field.value = value;
+  }
+}
+
+function getCharacterProfileFormData() {
+  return {
+    appearance: characterAppearanceInput?.value.trim() || '',
+    outfit: characterOutfitInput?.value.trim() || '',
+    personality: characterPersonalityInput?.value.trim() || '',
+    consistencyNotes: characterConsistencyNotesInput?.value.trim() || '',
+    lockEnabled: Boolean(lockCharacterConsistencyCheckbox?.checked)
+  };
+}
+
+function setCharacterProfileFormData(profile = defaultCharacterProfile()) {
+  characterAppearanceInput.value = profile.appearance || '';
+  characterOutfitInput.value = profile.outfit || '';
+  characterPersonalityInput.value = profile.personality || '';
+  characterConsistencyNotesInput.value = profile.consistencyNotes || '';
+  lockCharacterConsistencyCheckbox.checked = profile.lockEnabled !== false;
+}
+
+function getGenerationOptionsFormData() {
+  return {
+    skipGeneratedInBatch: Boolean(skipGeneratedInBatchCheckbox?.checked)
+  };
+}
+
+function setGenerationOptionsFormData(options = defaultGenerationOptions()) {
+  skipGeneratedInBatchCheckbox.checked = options.skipGeneratedInBatch !== false;
 }
 
 function pickSceneTitle(index, total) {
@@ -132,19 +196,6 @@ function pickEmotion(index, total) {
   return '温暖';
 }
 
-function getFormData() {
-  const data = Object.fromEntries(new FormData(form).entries());
-  data.pageCount = clampPageCount(data.pageCount);
-  return data;
-}
-
-function setFormData(data) {
-  for (const [key, value] of Object.entries(data || {})) {
-    const field = form.elements.namedItem(key);
-    if (field) field.value = value;
-  }
-}
-
 function buildPageText(data, index, total) {
   const { hero, goal, setting, conflict } = data;
   if (index === 1) {
@@ -165,14 +216,27 @@ function buildPageText(data, index, total) {
   return `最后，${hero}完成了“${goal}”。大家抬头看着眼前的变化，心里都暖洋洋的。`;
 }
 
-function buildPrompt(data, page, index, total) {
+function buildCharacterConsistencyText(meta = {}, characterProfile = defaultCharacterProfile()) {
+  if (!characterProfile?.lockEnabled) return '';
+  const parts = [
+    meta.hero ? `角色始终保持为：${meta.hero}` : '',
+    characterProfile.appearance ? `外形特征：${characterProfile.appearance}` : '',
+    characterProfile.outfit ? `固定服装和配饰：${characterProfile.outfit}` : '',
+    characterProfile.personality ? `气质与性格：${characterProfile.personality}` : '',
+    characterProfile.consistencyNotes ? `一致性备注：${characterProfile.consistencyNotes}` : '',
+    '所有页面保持同一角色形象、年龄感、毛色或肤色、服饰和主色调，不要突然变化'
+  ].filter(Boolean);
+  return parts.join('；');
+}
+
+function buildPrompt(data, page, index, total, book = null) {
   const { hero, setting, style, palette, goal, conflict } = data;
   const sceneHint = index <= 2
     ? '童书封面级构图，角色清晰可爱'
     : index >= total - 1
       ? '温暖收束画面，氛围柔和发光'
       : '儿童绘本跨页插画，层次丰富';
-
+  const consistencyText = buildCharacterConsistencyText(data, book?.characterProfile || defaultCharacterProfile());
   return [
     `主角：${hero}`,
     `场景：${setting}`,
@@ -183,9 +247,10 @@ function buildPrompt(data, page, index, total) {
     `色彩：${palette}`,
     `镜头：${page.shot}`,
     `情绪：${page.emotion}`,
+    consistencyText ? `角色一致性：${consistencyText}` : '',
     sceneHint,
     '高细节，适合儿童绘本，画面干净，避免杂乱文字'
-  ].join('；');
+  ].filter(Boolean).join('；');
 }
 
 function buildOutline(data) {
@@ -197,7 +262,8 @@ function buildOutline(data) {
   ];
 }
 
-function buildCoverPrompt(meta, summary = '') {
+function buildCoverPrompt(meta, summary = '', book = null) {
+  const consistencyText = buildCharacterConsistencyText(meta, book?.characterProfile || defaultCharacterProfile());
   return [
     `${meta.style}儿童绘本封面`,
     `主角：${meta.hero}`,
@@ -205,40 +271,135 @@ function buildCoverPrompt(meta, summary = '') {
     `场景：${meta.setting}`,
     `配色：${meta.palette}`,
     summary ? `故事氛围：${summary}` : '氛围：温暖梦幻，适合 3-9 岁儿童',
+    consistencyText ? `角色一致性：${consistencyText}` : '',
     '画面需要留出标题区域，角色完整清晰，构图精致，适合绘本封面'
-  ].join('；');
+  ].filter(Boolean).join('；');
 }
 
-function generateLocalBook(meta) {
+function syncPagePrimaryImage(page) {
+  if (!page || typeof page !== 'object') return page;
+  if (!Array.isArray(page.imageVariants)) page.imageVariants = [];
+  if (!Number.isInteger(page.currentImageIndex)) page.currentImageIndex = Math.max(0, page.imageVariants.length - 1);
+  if (page.currentImageIndex >= page.imageVariants.length) page.currentImageIndex = Math.max(0, page.imageVariants.length - 1);
+  if (page.currentImageIndex < 0) page.currentImageIndex = 0;
+  const currentVariant = page.imageVariants[page.currentImageIndex] || null;
+  page.imageDataUrl = currentVariant?.imageDataUrl || '';
+  return page;
+}
+
+function ensurePageShape(page = {}, fallbackPageNumber = 1) {
+  if (!page || typeof page !== 'object') page = {};
+  page.pageNumber = page.pageNumber || fallbackPageNumber;
+  page.title = String(page.title || `第 ${page.pageNumber} 页`);
+  page.text = String(page.text || '');
+  page.prompt = String(page.prompt || '');
+  page.shot = String(page.shot || '中景互动镜头');
+  page.emotion = String(page.emotion || '温暖');
+  page.imageDataUrl = String(page.imageDataUrl || '');
+  if (!Array.isArray(page.imageVariants)) page.imageVariants = [];
+  page.imageVariants = page.imageVariants
+    .filter((variant) => variant && typeof variant === 'object' && variant.imageDataUrl)
+    .map((variant, index) => ({
+      id: variant.id || uid(`variant_${page.pageNumber}_${index}`),
+      imageDataUrl: String(variant.imageDataUrl || ''),
+      prompt: String(variant.prompt || page.prompt || ''),
+      provider: String(variant.provider || ''),
+      model: String(variant.model || ''),
+      createdAt: String(variant.createdAt || nowIso())
+    }));
+
+  if (!page.imageVariants.length && page.imageDataUrl) {
+    page.imageVariants = [{
+      id: uid(`variant_${page.pageNumber}`),
+      imageDataUrl: page.imageDataUrl,
+      prompt: page.prompt || '',
+      provider: 'legacy',
+      model: '',
+      createdAt: nowIso()
+    }];
+  }
+
+  page.currentImageIndex = Number.isInteger(page.currentImageIndex) ? page.currentImageIndex : Math.max(0, page.imageVariants.length - 1);
+  if (!page.imageVariants.length) page.currentImageIndex = 0;
+  if (page.currentImageIndex >= page.imageVariants.length) page.currentImageIndex = Math.max(0, page.imageVariants.length - 1);
+  if (page.currentImageIndex < 0) page.currentImageIndex = 0;
+  return syncPagePrimaryImage(page);
+}
+
+function ensureBookShape(book) {
+  if (!book || typeof book !== 'object') return generateLocalBook(demoSeeds[0]);
+  if (!book.meta) book.meta = { ...demoSeeds[0] };
+  book.meta.pageCount = clampPageCount(book.meta.pageCount);
+  if (typeof book.summary !== 'string') book.summary = '';
+  if (typeof book.theme !== 'string') book.theme = '勇敢与善良';
+  if (typeof book.lesson !== 'string') book.lesson = '在帮助别人的路上，也会找到自己的力量。';
+  if (typeof book.coverPrompt !== 'string') book.coverPrompt = '';
+  if (typeof book.coverImageDataUrl !== 'string') book.coverImageDataUrl = '';
+  if (typeof book.characterReferenceImageDataUrl !== 'string') book.characterReferenceImageDataUrl = '';
+  if (typeof book.characterReferenceFileName !== 'string') book.characterReferenceFileName = '';
+  book.characterProfile = { ...defaultCharacterProfile(), ...(book.characterProfile || {}) };
+  book.generationOptions = { ...defaultGenerationOptions(), ...(book.generationOptions || {}) };
+  if (!Array.isArray(book.outline)) book.outline = buildOutline(book.meta);
+  if (!Array.isArray(book.pages)) book.pages = [];
+  book.pages = book.pages.map((page, index) => ensurePageShape(page, index + 1));
+  return book;
+}
+function cloneCreativeSettings(sourceBook = {}) {
+  const source = ensureBookShape({ ...sourceBook, pages: sourceBook.pages ? [...sourceBook.pages] : [] });
+  return {
+    characterReferenceImageDataUrl: source.characterReferenceImageDataUrl || '',
+    characterReferenceFileName: source.characterReferenceFileName || '',
+    characterProfile: { ...defaultCharacterProfile(), ...(source.characterProfile || {}) },
+    generationOptions: { ...defaultGenerationOptions(), ...(source.generationOptions || {}) }
+  };
+}
+
+function applyCreativeSettings(targetBook, sourceBook) {
+  const settings = cloneCreativeSettings(sourceBook || {});
+  targetBook.characterReferenceImageDataUrl = settings.characterReferenceImageDataUrl;
+  targetBook.characterReferenceFileName = settings.characterReferenceFileName;
+  targetBook.characterProfile = settings.characterProfile;
+  targetBook.generationOptions = settings.generationOptions;
+  return ensureBookShape(targetBook);
+}
+
+function generateLocalBook(meta, sourceBook = null) {
   const normalizedMeta = { ...meta, pageCount: clampPageCount(meta.pageCount) };
-  const pages = Array.from({ length: normalizedMeta.pageCount }, (_, idx) => {
+  const baseBook = {
+    meta: normalizedMeta,
+    summary: `${normalizedMeta.hero}${normalizedMeta.setting}，为了“${normalizedMeta.goal}”踏上旅程。一路上，TA 面对“${normalizedMeta.conflict}”带来的困难，最终学会勇敢、善良与坚持。`,
+    theme: '勇敢与善良',
+    lesson: '在帮助别人的路上，也会找到自己的力量。',
+    outline: buildOutline(normalizedMeta),
+    coverPrompt: '',
+    coverImageDataUrl: '',
+    characterReferenceImageDataUrl: '',
+    characterReferenceFileName: '',
+    characterProfile: defaultCharacterProfile(),
+    generationOptions: defaultGenerationOptions(),
+    pages: []
+  };
+
+  applyCreativeSettings(baseBook, sourceBook || {});
+
+  baseBook.pages = Array.from({ length: normalizedMeta.pageCount }, (_, idx) => {
     const pageNumber = idx + 1;
-    const page = {
+    const page = ensurePageShape({
       pageNumber,
       title: pickSceneTitle(pageNumber, normalizedMeta.pageCount),
       text: buildPageText(normalizedMeta, pageNumber, normalizedMeta.pageCount),
       shot: pickShot(pageNumber),
       emotion: pickEmotion(pageNumber, normalizedMeta.pageCount),
-      imageDataUrl: ''
-    };
-    page.prompt = buildPrompt(normalizedMeta, page, pageNumber, normalizedMeta.pageCount);
+      imageDataUrl: '',
+      imageVariants: [],
+      currentImageIndex: 0
+    }, pageNumber);
+    page.prompt = buildPrompt(normalizedMeta, page, pageNumber, normalizedMeta.pageCount, baseBook);
     return page;
   });
 
-  const summary = `${normalizedMeta.hero}${normalizedMeta.setting}，为了“${normalizedMeta.goal}”踏上旅程。一路上，TA 面对“${normalizedMeta.conflict}”带来的困难，最终学会勇敢、善良与坚持。`;
-
-  return {
-    meta: normalizedMeta,
-    summary,
-    theme: '勇敢与善良',
-    lesson: '在帮助别人的路上，也会找到自己的力量。',
-    outline: buildOutline(normalizedMeta),
-    coverPrompt: buildCoverPrompt(normalizedMeta, summary),
-    coverImageDataUrl: '',
-    characterReferenceImageDataUrl: '',
-    characterReferenceFileName: '',
-    pages
-  };
+  baseBook.coverPrompt = buildCoverPrompt(normalizedMeta, baseBook.summary, baseBook);
+  return ensureBookShape(baseBook);
 }
 
 function createProject(seed = demoSeeds[0]) {
@@ -292,6 +453,7 @@ function updateActiveProject(mutator, options = {}) {
   const project = getActiveProject();
   if (!project) return;
   mutator(project);
+  ensureBookShape(project.book);
   project.name = project.book?.meta?.title || project.name;
   project.updatedAt = nowIso();
   saveState();
@@ -346,17 +508,79 @@ function renderCharacterReference(book) {
   if (characterReferenceInput) characterReferenceInput.value = '';
 }
 
-function ensureBookShape(book) {
-  if (!book || typeof book !== 'object') return book;
-  if (typeof book.characterReferenceImageDataUrl !== 'string') book.characterReferenceImageDataUrl = '';
-  if (typeof book.characterReferenceFileName !== 'string') book.characterReferenceFileName = '';
-  if (!Array.isArray(book.pages)) book.pages = [];
-  return book;
+function getCurrentVariant(page) {
+  ensurePageShape(page);
+  return page.imageVariants[page.currentImageIndex] || null;
+}
+
+function pageHasGeneratedImage(page) {
+  ensurePageShape(page);
+  return Boolean(page.imageVariants.length || page.imageDataUrl);
+}
+
+function addImageVariantToPage(page, result, promptSent) {
+  ensurePageShape(page);
+  page.imageVariants.push({
+    id: uid(`variant_${page.pageNumber}`),
+    imageDataUrl: result.imageDataUrl,
+    prompt: result.revisedPrompt || promptSent,
+    provider: result.provider || state.apiStatus.imageProvider || '',
+    model: result.model || state.apiStatus.imageModel || '',
+    createdAt: nowIso()
+  });
+  page.currentImageIndex = page.imageVariants.length - 1;
+  page.prompt = result.revisedPrompt || page.prompt;
+  syncPagePrimaryImage(page);
+}
+
+function deleteCurrentVariantFromPage(page) {
+  ensurePageShape(page);
+  if (!page.imageVariants.length) {
+    page.imageDataUrl = '';
+    return;
+  }
+  page.imageVariants.splice(page.currentImageIndex, 1);
+  if (page.currentImageIndex >= page.imageVariants.length) {
+    page.currentImageIndex = Math.max(0, page.imageVariants.length - 1);
+  }
+  syncPagePrimaryImage(page);
+}
+
+function selectVariantOnPage(page, variantIndex) {
+  ensurePageShape(page);
+  if (variantIndex < 0 || variantIndex >= page.imageVariants.length) return;
+  page.currentImageIndex = variantIndex;
+  syncPagePrimaryImage(page);
+}
+
+function renderVariantStrip(container, page) {
+  container.innerHTML = '';
+  if (!page.imageVariants.length) {
+    const empty = document.createElement('span');
+    empty.className = 'variant-thumb-empty';
+    empty.textContent = '生成后可保留多个候选图';
+    container.appendChild(empty);
+    return;
+  }
+
+  page.imageVariants.forEach((variant, index) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `variant-thumb${index === page.currentImageIndex ? ' active' : ''}`;
+    btn.dataset.variantIndex = String(index);
+    btn.title = `候选图 ${index + 1}`;
+    const img = document.createElement('img');
+    img.src = variant.imageDataUrl;
+    img.alt = `候选图 ${index + 1}`;
+    btn.appendChild(img);
+    container.appendChild(btn);
+  });
 }
 
 function renderPages(book) {
   pagesEl.innerHTML = '';
-  (book.pages || []).forEach((page) => {
+  (book.pages || []).forEach((rawPage) => {
+    const page = ensurePageShape(rawPage, rawPage.pageNumber);
     const node = pageTemplate.content.firstElementChild.cloneNode(true);
     node.dataset.page = page.pageNumber;
     node.querySelector('.page-badge').textContent = `第 ${page.pageNumber} 页`;
@@ -366,6 +590,12 @@ function renderPages(book) {
     node.querySelector('.page-shot').value = page.shot || '';
     node.querySelector('.page-emotion').value = page.emotion || '';
     renderImageBox(node.querySelector('.page-image'), page.imageDataUrl, '暂无插图');
+    node.querySelector('.variant-status').textContent = page.imageVariants.length
+      ? `候选图 ${page.currentImageIndex + 1}/${page.imageVariants.length}`
+      : '暂无候选图';
+    node.querySelector('.page-generate-image').textContent = page.imageVariants.length ? '新增候选' : '生成插图';
+    node.querySelector('.page-clear-image').disabled = !page.imageVariants.length;
+    renderVariantStrip(node.querySelector('.variant-strip'), page);
     pagesEl.appendChild(node);
   });
 }
@@ -374,6 +604,8 @@ function renderBook(book) {
   if (!book) return;
   ensureBookShape(book);
   setFormData(book.meta);
+  setCharacterProfileFormData(book.characterProfile || defaultCharacterProfile());
+  setGenerationOptionsFormData(book.generationOptions || defaultGenerationOptions());
   previewTitle.textContent = book.meta?.title || '未命名绘本';
   previewSummary.textContent = book.summary || '';
   statPages.textContent = book.meta?.pageCount || 0;
@@ -381,7 +613,7 @@ function renderBook(book) {
   statAge.textContent = book.meta?.ageGroup || '-';
   themeTag.textContent = `主题：${book.theme || '温暖成长'}`;
   lessonTag.textContent = `成长点：${book.lesson || '相信自己'}`;
-  coverPromptEl.value = book.coverPrompt || buildCoverPrompt(book.meta || {}, book.summary || '');
+  coverPromptEl.value = book.coverPrompt || buildCoverPrompt(book.meta || {}, book.summary || '', book);
   renderImageBox(coverPreviewEl, book.coverImageDataUrl, '暂无封面图');
   renderCharacterReference(book);
   renderOutline(book.outline || []);
@@ -397,12 +629,8 @@ function renderAll() {
 function syncFormIntoProject() {
   const formData = getFormData();
   updateActiveProject((project) => {
-    const current = project.book || generateLocalBook(formData);
-    current.meta = { ...current.meta, ...formData };
-    current.meta.pageCount = clampPageCount(formData.pageCount);
-    if (!current.coverPrompt) current.coverPrompt = buildCoverPrompt(current.meta, current.summary || '');
-    if (typeof current.characterReferenceImageDataUrl !== 'string') current.characterReferenceImageDataUrl = '';
-    if (typeof current.characterReferenceFileName !== 'string') current.characterReferenceFileName = '';
+    const current = ensureBookShape(project.book || generateLocalBook(formData));
+    current.meta = { ...current.meta, ...formData, pageCount: clampPageCount(formData.pageCount) };
     project.book = current;
   }, { render: false });
   const project = getActiveProject();
@@ -414,34 +642,44 @@ function syncFormIntoProject() {
     renderProjects();
   }
 }
-
 function collectRenderedBook() {
   const formData = getFormData();
+  const existingBook = ensureBookShape(getActiveProject()?.book || generateLocalBook(formData));
   const outline = [...outlineEl.querySelectorAll('.outline-card')].map((card) => ({
     label: card.querySelector('span')?.textContent || '',
     text: card.querySelector('p')?.textContent || ''
   }));
-  const pages = [...pagesEl.querySelectorAll('.page-card')].map((card, idx) => ({
-    pageNumber: idx + 1,
-    title: card.querySelector('.page-title').value.trim(),
-    text: card.querySelector('.page-text').value.trim(),
-    prompt: card.querySelector('.page-prompt').value.trim(),
-    shot: card.querySelector('.page-shot').value.trim(),
-    emotion: card.querySelector('.page-emotion').value.trim(),
-    imageDataUrl: card.querySelector('.page-image img')?.src || ''
-  }));
-  return {
+  const pages = [...pagesEl.querySelectorAll('.page-card')].map((card, idx) => {
+    const existingPage = ensurePageShape(existingBook.pages[idx] || {}, idx + 1);
+    const page = {
+      ...existingPage,
+      pageNumber: idx + 1,
+      title: card.querySelector('.page-title').value.trim(),
+      text: card.querySelector('.page-text').value.trim(),
+      prompt: card.querySelector('.page-prompt').value.trim(),
+      shot: card.querySelector('.page-shot').value.trim(),
+      emotion: card.querySelector('.page-emotion').value.trim(),
+      imageDataUrl: existingPage.imageDataUrl || card.querySelector('.page-image img')?.src || '',
+      imageVariants: Array.isArray(existingPage.imageVariants) ? existingPage.imageVariants : [],
+      currentImageIndex: Number.isInteger(existingPage.currentImageIndex) ? existingPage.currentImageIndex : 0
+    };
+    return ensurePageShape(page, idx + 1);
+  });
+
+  return ensureBookShape({
     meta: formData,
     summary: previewSummary.textContent.trim(),
     theme: (themeTag.textContent || '').replace(/^主题：/, '').trim(),
     lesson: (lessonTag.textContent || '').replace(/^成长点：/, '').trim(),
     coverPrompt: coverPromptEl.value.trim(),
-    coverImageDataUrl: coverPreviewEl.querySelector('img')?.src || '',
-    characterReferenceImageDataUrl: characterReferencePreviewEl.querySelector('img')?.src || '',
+    coverImageDataUrl: coverPreviewEl.querySelector('img')?.src || existingBook.coverImageDataUrl || '',
+    characterReferenceImageDataUrl: characterReferencePreviewEl.querySelector('img')?.src || existingBook.characterReferenceImageDataUrl || '',
     characterReferenceFileName: characterReferenceNameEl.textContent === '未上传' ? '' : characterReferenceNameEl.textContent.trim(),
+    characterProfile: getCharacterProfileFormData(),
+    generationOptions: getGenerationOptionsFormData(),
     outline,
     pages
-  };
+  });
 }
 
 function persistCurrentBook() {
@@ -599,13 +837,29 @@ async function refreshApiStatus() {
   }
 }
 
+function composePromptForGeneration(basePrompt, book) {
+  const consistencyText = buildCharacterConsistencyText(book.meta || {}, book.characterProfile || defaultCharacterProfile());
+  if (!consistencyText) return basePrompt;
+  if (String(basePrompt).includes('角色一致性：')) return basePrompt;
+  return `${basePrompt}；角色一致性：${consistencyText}`;
+}
+
+async function generateImageFromPrompt(prompt, filename, options = {}) {
+  return api('/api/generate-image', {
+    method: 'POST',
+    body: {
+      prompt,
+      size: options.size || '1024x1024',
+      filename,
+      referenceImageDataUrl: options.referenceImageDataUrl || ''
+    }
+  });
+}
+
 async function handleLocalGenerate() {
   const formData = getFormData();
   updateActiveProject((project) => {
-    const nextBook = generateLocalBook(formData);
-    nextBook.characterReferenceImageDataUrl = project.book?.characterReferenceImageDataUrl || '';
-    nextBook.characterReferenceFileName = project.book?.characterReferenceFileName || '';
-    project.book = nextBook;
+    project.book = generateLocalBook(formData, project.book);
   });
   toast('已生成本地绘本结构');
 }
@@ -618,9 +872,7 @@ async function handleAiStoryGenerate() {
       body: { brief: getFormData() }
     });
     updateActiveProject((project) => {
-      result.book.characterReferenceImageDataUrl = project.book?.characterReferenceImageDataUrl || '';
-      result.book.characterReferenceFileName = project.book?.characterReferenceFileName || '';
-      project.book = result.book;
+      project.book = applyCreativeSettings(result.book, project.book);
     });
     toast('AI 故事生成完成');
   } catch (error) {
@@ -630,31 +882,19 @@ async function handleAiStoryGenerate() {
   }
 }
 
-async function generateImageFromPrompt(prompt, filename, options = {}) {
-  const result = await api('/api/generate-image', {
-    method: 'POST',
-    body: {
-      prompt,
-      size: options.size || '1024x1024',
-      filename,
-      referenceImageDataUrl: options.referenceImageDataUrl || ''
-    }
-  });
-  return result;
-}
-
 async function handleCoverGenerate() {
   persistCurrentBook();
   const project = getActiveProject();
-  const prompt = coverPromptEl.value.trim() || buildCoverPrompt(project.book.meta, project.book.summary);
+  const prompt = coverPromptEl.value.trim() || buildCoverPrompt(project.book.meta, project.book.summary, project.book);
   coverPromptEl.value = prompt;
   showLoading('AI 正在生成封面图...');
   try {
-    const result = await generateImageFromPrompt(prompt, `${project.book.meta.title}-cover`, {
+    const finalPrompt = composePromptForGeneration(prompt, project.book);
+    const result = await generateImageFromPrompt(finalPrompt, `${project.book.meta.title}-cover`, {
       referenceImageDataUrl: project.book.characterReferenceImageDataUrl || ''
     });
     updateActiveProject((currentProject) => {
-      currentProject.book.coverPrompt = result.revisedPrompt || prompt;
+      currentProject.book.coverPrompt = result.revisedPrompt || finalPrompt;
       currentProject.book.coverImageDataUrl = result.imageDataUrl;
     });
     toast('封面图生成完成');
@@ -664,22 +904,22 @@ async function handleCoverGenerate() {
     hideLoading();
   }
 }
-
-async function handleGeneratePageImage(pageIndex) {
+async function handleGeneratePageImage(pageIndex, mode = 'generate') {
   persistCurrentBook();
   const project = getActiveProject();
-  const page = project.book.pages[pageIndex];
+  const page = ensurePageShape(project.book.pages[pageIndex], pageIndex + 1);
   if (!page) return;
-  showLoading(`正在生成第 ${page.pageNumber} 页插图...`);
+
+  showLoading(`正在${mode === 'regenerate' ? '重生成' : '生成'}第 ${page.pageNumber} 页插图...`);
   try {
-    const result = await generateImageFromPrompt(page.prompt, `${project.book.meta.title}-page-${page.pageNumber}`, {
+    const finalPrompt = composePromptForGeneration(page.prompt, project.book);
+    const result = await generateImageFromPrompt(finalPrompt, `${project.book.meta.title}-page-${page.pageNumber}`, {
       referenceImageDataUrl: project.book.characterReferenceImageDataUrl || ''
     });
     updateActiveProject((currentProject) => {
-      currentProject.book.pages[pageIndex].imageDataUrl = result.imageDataUrl;
-      currentProject.book.pages[pageIndex].prompt = result.revisedPrompt || currentProject.book.pages[pageIndex].prompt;
+      addImageVariantToPage(currentProject.book.pages[pageIndex], result, finalPrompt);
     });
-    toast(`第 ${page.pageNumber} 页插图已生成`);
+    toast(`第 ${page.pageNumber} 页${mode === 'regenerate' ? '重生成' : '插图生成'}完成`);
   } catch (error) {
     toast(error.message || '页面插图生成失败');
   } finally {
@@ -695,20 +935,31 @@ async function handleBatchImageGenerate() {
     toast('请先生成绘本页面');
     return;
   }
+
+  const skipGenerated = project.book.generationOptions?.skipGeneratedInBatch !== false;
+  const queue = pages
+    .map((page, index) => ({ page: ensurePageShape(page, index + 1), index }))
+    .filter(({ page }) => !skipGenerated || !pageHasGeneratedImage(page));
+
+  if (!queue.length) {
+    toast('当前所有页面都已有插图，未执行批量生成');
+    return;
+  }
+
   try {
-    for (let i = 0; i < pages.length; i += 1) {
+    for (let i = 0; i < queue.length; i += 1) {
+      const { page, index } = queue[i];
       const currentProject = getActiveProject();
-      const currentPage = currentProject.book.pages[i];
-      showLoading(`正在批量生成第 ${i + 1}/${pages.length} 页插图...`);
-      const result = await generateImageFromPrompt(currentPage.prompt, `${currentProject.book.meta.title}-page-${currentPage.pageNumber}`, {
+      showLoading(`正在批量生成第 ${i + 1}/${queue.length} 张（原第 ${page.pageNumber} 页）...`);
+      const finalPrompt = composePromptForGeneration(page.prompt, currentProject.book);
+      const result = await generateImageFromPrompt(finalPrompt, `${currentProject.book.meta.title}-page-${page.pageNumber}`, {
         referenceImageDataUrl: currentProject.book.characterReferenceImageDataUrl || ''
       });
       updateActiveProject((proj) => {
-        proj.book.pages[i].imageDataUrl = result.imageDataUrl;
-        proj.book.pages[i].prompt = result.revisedPrompt || proj.book.pages[i].prompt;
+        addImageVariantToPage(proj.book.pages[index], result, finalPrompt);
       });
     }
-    toast('全部页面插图生成完成');
+    toast(`批量生图完成，共生成 ${queue.length} 页`);
   } catch (error) {
     toast(error.message || '批量插图生成失败');
   } finally {
@@ -729,6 +980,7 @@ function downloadFile(filename, content, type) {
 function handleExportMarkdown() {
   persistCurrentBook();
   const book = getActiveProject().book;
+  const profile = book.characterProfile || defaultCharacterProfile();
   const md = [
     `# ${book.meta.title}`,
     '',
@@ -740,11 +992,19 @@ function handleExportMarkdown() {
     `- 风格：${book.meta.style}`,
     `- 主色：${book.meta.palette}`,
     '',
+    '## 角色一致性',
+    '',
+    `- 自动锁定：${profile.lockEnabled ? '开启' : '关闭'}`,
+    `- 外形特征：${profile.appearance || '未填写'}`,
+    `- 固定服装：${profile.outfit || '未填写'}`,
+    `- 性格关键词：${profile.personality || '未填写'}`,
+    `- 一致性备注：${profile.consistencyNotes || '未填写'}`,
+    '',
     '## 故事简介',
     '',
     book.summary,
     '',
-    `## 主题`,
+    '## 主题',
     '',
     `- 主题：${book.theme}`,
     `- 成长点：${book.lesson}`,
@@ -764,6 +1024,8 @@ function handleExportMarkdown() {
       `**镜头**：${page.shot}`,
       '',
       `**情绪**：${page.emotion}`,
+      '',
+      `**候选图数量**：${page.imageVariants?.length || 0}`,
       ''
     ])
   ].join('\n');
@@ -846,10 +1108,7 @@ function handleDeleteProject() {
 function handleRandomSeed() {
   const seed = demoSeeds[Math.floor(Math.random() * demoSeeds.length)];
   updateActiveProject((project) => {
-    const nextBook = generateLocalBook(seed);
-    nextBook.characterReferenceImageDataUrl = project.book?.characterReferenceImageDataUrl || '';
-    nextBook.characterReferenceFileName = project.book?.characterReferenceFileName || '';
-    project.book = nextBook;
+    project.book = generateLocalBook(seed, project.book);
   });
   toast('已切换到随机示例');
 }
@@ -861,6 +1120,32 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function bindCreativeSettingInputs() {
+  [
+    characterAppearanceInput,
+    characterOutfitInput,
+    characterPersonalityInput,
+    characterConsistencyNotesInput,
+    lockCharacterConsistencyCheckbox,
+    skipGeneratedInBatchCheckbox
+  ].forEach((input) => {
+    input?.addEventListener('input', () => {
+      updateActiveProject((project) => {
+        ensureBookShape(project.book);
+        project.book.characterProfile = getCharacterProfileFormData();
+        project.book.generationOptions = getGenerationOptionsFormData();
+      }, { render: false });
+    });
+    input?.addEventListener('change', () => {
+      updateActiveProject((project) => {
+        ensureBookShape(project.book);
+        project.book.characterProfile = getCharacterProfileFormData();
+        project.book.generationOptions = getGenerationOptionsFormData();
+      }, { render: false });
+    });
+  });
 }
 
 function bindEvents() {
@@ -883,6 +1168,7 @@ function bindEvents() {
 
   form.addEventListener('input', syncFormIntoProject);
   characterReferenceInput.addEventListener('change', handleCharacterReferenceChange);
+  bindCreativeSettingInputs();
 
   coverPromptEl.addEventListener('input', () => {
     updateActiveProject((project) => {
@@ -899,13 +1185,27 @@ function bindEvents() {
     if (!pageCard) return;
     const pageIndex = Number(pageCard.dataset.page) - 1;
     if (event.target.closest('.page-generate-image')) {
-      await handleGeneratePageImage(pageIndex);
+      await handleGeneratePageImage(pageIndex, 'generate');
+      return;
+    }
+    if (event.target.closest('.page-regenerate-image')) {
+      await handleGeneratePageImage(pageIndex, 'regenerate');
+      return;
     }
     if (event.target.closest('.page-clear-image')) {
       updateActiveProject((project) => {
-        project.book.pages[pageIndex].imageDataUrl = '';
+        deleteCurrentVariantFromPage(project.book.pages[pageIndex]);
       });
-      toast(`已清空第 ${pageIndex + 1} 页插图`);
+      toast(`已删除第 ${pageIndex + 1} 页当前候选图`);
+      return;
+    }
+    const thumb = event.target.closest('.variant-thumb');
+    if (thumb) {
+      const variantIndex = Number(thumb.dataset.variantIndex);
+      updateActiveProject((project) => {
+        selectVariantOnPage(project.book.pages[pageIndex], variantIndex);
+      });
+      toast(`已切换到第 ${pageIndex + 1} 页候选图 ${variantIndex + 1}`);
     }
   });
 }

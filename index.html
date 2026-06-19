@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>云溪绘本工具 Pro</title>
-    <link rel="stylesheet" href="styles.css?v=20260619c" />
+    <link rel="stylesheet" href="styles.css?v=20260619d" />
   </head>
   <body>
     <div class="app-shell">
@@ -84,6 +84,35 @@
           </form>
         </section>
 
+        <section class="card panel">
+          <div class="section-head compact-head">
+            <h2>角色一致性</h2>
+            <span class="muted tiny-text">创作工具核心</span>
+          </div>
+          <div class="form-grid">
+            <label>
+              外形特征
+              <textarea id="characterAppearance" rows="3" placeholder="例如：圆脸、小耳朵、琥珀色眼睛、尾巴蓬松"></textarea>
+            </label>
+            <label>
+              固定服装 / 配饰
+              <textarea id="characterOutfit" rows="3" placeholder="例如：一直戴星星邮差帽，背奶油黄小邮包"></textarea>
+            </label>
+            <label>
+              性格关键词
+              <input id="characterPersonality" placeholder="例如：勇敢、温柔、好奇" />
+            </label>
+            <label>
+              一致性备注
+              <textarea id="characterConsistencyNotes" rows="3" placeholder="例如：所有页面都保持同样毛色和服饰，不要变成年龄更大的角色"></textarea>
+            </label>
+          </div>
+          <label class="check-row">
+            <input id="lockCharacterConsistencyCheckbox" type="checkbox" checked />
+            <span>生成插图时自动追加角色一致性要求</span>
+          </label>
+        </section>
+
         <section class="card panel status-panel">
           <div class="section-head compact-head">
             <h2>AI / 导出工具</h2>
@@ -104,6 +133,14 @@
               <button id="saveBtn" class="secondary">保存当前项目</button>
             </div>
           </div>
+
+          <div class="tool-options">
+            <label class="check-row compact-check">
+              <input id="skipGeneratedInBatchCheckbox" type="checkbox" checked />
+              <span>批量生图时跳过已有插图页面</span>
+            </label>
+          </div>
+
           <div class="button-stack">
             <button id="localGenerateBtn" class="primary">本地生成绘本结构</button>
             <button id="aiGenerateBtn" class="secondary">AI 生成完整故事</button>
@@ -160,7 +197,7 @@
         <section class="pages-section card">
           <div class="section-head">
             <h3>逐页绘本</h3>
-            <span class="muted">支持编辑、单页生图与导出</span>
+            <span class="muted">支持编辑、单页生图、候选图切换与导出</span>
           </div>
           <div id="pages" class="pages-grid"></div>
         </section>
@@ -192,10 +229,15 @@
         </div>
         <div class="page-image-wrap">
           <div class="page-image empty">暂无插图</div>
-          <div class="page-actions">
-            <button class="page-generate-image secondary small-btn">生成插图</button>
-            <button class="page-clear-image ghost small-btn">清空</button>
+          <div class="variant-toolbar">
+            <span class="variant-status">暂无候选图</span>
+            <div class="page-actions">
+              <button class="page-generate-image secondary small-btn">生成插图</button>
+              <button class="page-regenerate-image secondary small-btn">重生成</button>
+              <button class="page-clear-image ghost small-btn">删除当前</button>
+            </div>
           </div>
+          <div class="variant-strip"></div>
         </div>
         <label>
           页面文案
@@ -218,6 +260,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=20260619c"></script>
+    <script src="app.js?v=20260619d"></script>
   </body>
 </html>
